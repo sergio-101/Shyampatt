@@ -15,13 +15,20 @@
 static float TOOL_TRAY_WIDTH = 60; 
 static float MAX_TOOL_TRAY_HEIGHT = 400;
 static float TOOL_TRAY_MX = 50;
+static float margin = 10;
 
 typedef enum Mode {
     Drawing = 0, 
     Free,
     Pointing,
-    Dragging
+    Selected,
+    Reshaping,
+    Dragging,
 } Mode;
+
+typedef enum Side {
+    Left, Top, Right, Bottom 
+} Side;
 
 typedef enum Shapes {
     Rectangle_sh = 0, // _sh (shape)
@@ -78,8 +85,11 @@ typedef struct State {
     int allocated;
     int cursor;
     Object *pointingTo;
+    Object *selected;
     Object beingDrawn;
     Mode mode;
+    Side reshapeModeSide; 
+    Vector2 *grabbed;
     Shapes Shape_Equipped;
     Vector2 prevMouse;
     Color bg;

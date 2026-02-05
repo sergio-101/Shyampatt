@@ -1,10 +1,49 @@
 #include "shared.h"
 #include "game.h"
 
+float dist(Vector2 p1, Vector2 p2) {
+    float dx = p2.x - p1.x;
+    float dy = p2.y - p1.y;
+    return sqrtf(dx * dx + dy * dy);
+}
+bool isOffBy(float p1, float p2, float m){
+    return (p2 - m < p1 && p1 < p2 + m);
+}
+
 Vector2 APointOnLine(Vector2 p1, Vector2 p2, float ratio){
     float x = p1.x + (ratio * (p2.x - p1.x));
     float y = p1.y + (ratio * (p2.y - p1.y));
     return (Vector2) {x, y};
+}
+
+Rectangle AdjustRectangle(Rectangle rect){
+   if(rect.width < 0){
+            rect.x += rect.width;
+            rect.width *= -1;
+        }
+    if(rect.height < 0){
+        rect.y += rect.height;
+        rect.height *= -1;
+    }
+    return rect;
+}
+
+Ellipse AdjustEllipse(Ellipse el){
+    // printf("%f, %f, %f, %f\n", el.x, el.y, el.rh, el.rv);
+    el.rh = abs(el.rh);
+    el.rv = abs(el.rv);
+    // printf("%f, %f, %f, %f\n", el.x, el.y, el.rh, el.rv);
+    return el;
+}
+
+void DrawHitbox(Object obj){
+    obj.hitBox = AdjustRectangle(obj.hitBox);
+    DrawRectangleLinesEx((Rectangle){ 
+        obj.hitBox.x - margin,
+        obj.hitBox.y - margin,
+        obj.hitBox.width + margin * 2,
+        obj.hitBox.height + margin * 2,
+    },  2, RED);
 }
 
 void freeAll(State* GState){
@@ -18,6 +57,7 @@ State SetupBoard(int w, int h){
         .allocated = INIT_NUMBER_OF_SHAPES_ALLOC,
         .mode = Free,
         .Shape_Equipped = Rectangle_sh,
+        .cursor = MOUSE_CURSOR_DEFAULT,
         .bg = (Color) {0 , 0, 0, 255},
         .prevMouse = (Vector2) {0, 0}
     };
@@ -33,7 +73,7 @@ void InitTray(State *GState){
     float ScreenHeight = GetScreenHeight(); 
     GState->tray = (Tray_args) {
         .selectedIndex = 0,
-        .padding = 20,
+        .padding = margin * 2,
         .slot_w = TOOL_TRAY_WIDTH,
         .height = MAX_TOOL_TRAY_HEIGHT,
         .width = TOOL_TRAY_WIDTH,
@@ -114,8 +154,8 @@ void InitTray(State *GState){
         .shape.Arr = (Arrow) {
             .start = start,
             .end = end,
-            .h1 = (Vector2) {p.x, p.y + 10},
-            .h2 = (Vector2) {p.x, p.y - 10},
+            .h1 = (Vector2) {p.x, p.y + margin},
+            .h2 = (Vector2) {p.x, p.y - margin},
         },
     };
     TrayBuff[4] = ArrowObj;
@@ -160,6 +200,34 @@ bool isInRectangle(Vector2 p, Rectangle Rect){
         p.x < Rect.x + Rect.width 
     );
 }
+int isOnBordersWithMargin(Vector2 p, Rectangle rect, int margin){
+    bool InsideOuter = isInRectangle(p, (Rectangle) {
+            rect.x-margin, 
+            rect.y-margin, 
+            rect.width+margin*2, 
+            rect.height+margin*2
+    });
+    bool InsideInner = isInRectangle(p, (Rectangle) {
+            rect.x+margin, 
+            rect.y+margin, 
+            rect.width-margin*2, 
+            rect.height-margin*2
+    });
+    if(InsideOuter && !InsideInner){
+        float x = rect.x;
+        float y = rect.y;
+        float w = rect.width;
+        float h = rect.height;
+
+        Side side;
+        if(isOffBy(p.x, x, margin)) side = Left;
+        else if(isOffBy(p.x, x + w, margin)) side = Right;
+        else if(isOffBy(p.y, y + h, margin)) side = Bottom;
+        else if(isOffBy(p.y, y, margin)) side = Top;
+        return side;
+    }
+    else return -1;
+}
 bool isPointOnObjectBorder(Vector2 p, Object obj, int margin){
     switch(obj.type){
         case Rectangle_sh:
@@ -188,6 +256,8 @@ bool isPointOnObjectBorder(Vector2 p, Object obj, int margin){
             float dy = p.y - obj.shape.El.y;
             float rx = obj.shape.El.rh;
             float ry = obj.shape.El.rv;
+            if(rx == 0 || ry == 0) return false;
+
             // Ellipse equation: (x/rx)^2 + (y/ry)^2
             float distance = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
             float outerBound = 1.0f + margin / fmin(rx, ry);
@@ -211,7 +281,9 @@ bool isPointOnObjectBorder(Vector2 p, Object obj, int margin){
                     obj.hitBox.height,
                 }
             );
-            return (err < margin && inLineHitBox);
+            float distFromEnd = dist(p, obj.shape.Line.end);
+            float distFromStart = dist(p, obj.shape.Line.start);
+            return (err < margin && inLineHitBox || distFromStart < margin || distFromEnd < margin);
         }
         case Arrow_sh:{
             float x1 = obj.shape.Arr.start.x;
@@ -228,42 +300,6 @@ bool isPointOnObjectBorder(Vector2 p, Object obj, int margin){
 }
 void HandleDrawing(State *GState){
     Vector2 epos = GetMousePosition();
-
-    // Initiate Drawing 
-    if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && GState->mode == Free){
-        GState->Equip_pos = epos; 
-        GState->mode = Drawing;
-        Object Obj = {
-            .type = GState->Shape_Equipped,
-            .thickness = 3,
-            .stroke = GRAY,
-            .showHitBox = true,
-        };
-        switch(GState->Shape_Equipped){
-            case Rectangle_sh:
-                Obj.shape.Rect = (Rectangle) {0, 0, 0, 0};
-                break;
-
-            case Ellipse_sh:
-                Obj.shape.El = (Ellipse) {0, 0, 0, 0};
-                break;
-
-            case Line_sh:
-                Obj.shape.Line = (Line) {epos, (Vector2){0, 0}};
-                break;
-
-            case Arrow_sh:
-                Obj.shape.Arr = (Arrow) {
-                    epos, 
-                    (Vector2){0, 0},
-                    (Vector2){0, 0},
-                    (Vector2){0, 0},
-                };
-                break;
-        };
-        GState->beingDrawn = Obj;
-    }
-    
     // Updating Drawing;
     if(GState->mode == Drawing){
         Vector2 epos = GState->Equip_pos;
@@ -315,8 +351,8 @@ void HandleDrawing(State *GState){
                 Obj->shape.Arr.end.x = mpos.x;
                 Obj->shape.Arr.end.y = mpos.y;
                 Vector2 p = APointOnLine(epos, mpos, 0.9);
-                Obj->shape.Arr.h1 = (Vector2) {p.x, p.y + 10};
-                Obj->shape.Arr.h2 = (Vector2) {p.x, p.y - 10};
+                Obj->shape.Arr.h1 = (Vector2) {p.x, p.y + margin};
+                Obj->shape.Arr.h2 = (Vector2) {p.x, p.y - margin};
                 Obj->hitBox = (Rectangle) {
                     fmin(epos.x, mpos.x), fmin(epos.y, mpos.y),
                     fmax(epos.x, mpos.x) - fmin(epos.x, mpos.x),
@@ -326,26 +362,12 @@ void HandleDrawing(State *GState){
             }
        }
     }
-
-    // Ending Drawing  
-    if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && GState->mode == Drawing){
-       Object Obj = GState->beingDrawn;
-       Obj.stroke = GRAY;
-       Obj.showHitBox = false;
-       GState->Objects_buffer[GState->n] = Obj;
-       GState->n++;
-       GState->mode= Free;
-
-    }
 }
+
 void HandleDragging(State *GState){
     Vector2 epos = GetMousePosition();
-    if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && GState->mode == Pointing){
-        GState->Equip_pos = epos; 
-        GState->mode = Dragging;
-    }
     if(GState->mode == Dragging){
-        Object *obj = GState->pointingTo;
+        Object *obj = GState->selected;
         switch(obj->type){
             case Rectangle_sh:
                 obj->shape.Rect.x += epos.x - GState->Equip_pos.x;
@@ -377,46 +399,299 @@ void HandleDragging(State *GState){
         obj->hitBox.y += epos.y - GState->Equip_pos.y;
         GState->Equip_pos = epos;
     }
-    if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && GState->mode == Dragging){
-       GState->mode= Free;
-    }
-
 }
+
+
+void HandleReshaping(State *GState){
+    Vector2 epos = GetMousePosition();
+    if(GState->mode == Reshaping){
+       Object *obj = GState->selected;
+       Vector2 shift = (Vector2){epos.x - GState->Equip_pos.x, epos.y - GState->Equip_pos.y};
+       switch(obj->type){
+           case Rectangle_sh:{
+               switch(GState->reshapeModeSide){
+                   case Right:
+                        obj->shape.Rect.width += shift.x;
+                       break;
+                   case Left:
+                       obj->shape.Rect.x += shift.x;
+                       obj->shape.Rect.width -= shift.x;
+                       break;
+                   case Top:
+                       obj->shape.Rect.y += shift.y;
+                       obj->shape.Rect.height -= shift.y;
+                       break;
+                   case Bottom:
+                       obj->shape.Rect.height += shift.y;
+                       break;
+                }
+                obj->hitBox = obj->shape.Rect;
+                break;
+            }
+           case Ellipse_sh:
+                switch(GState->reshapeModeSide){
+                   case Right:{
+                        obj->shape.El.x += shift.x/2;
+                        obj->shape.El.rh += shift.x/2;
+                        break;
+                    }
+                   case Left:{
+                        obj->shape.El.x += shift.x/2;
+                        obj->shape.El.rh -= shift.x/2;
+                        break;
+                    }
+                   case Top:{
+                        obj->shape.El.y += shift.y/2;
+                        obj->shape.El.rv -= shift.y/2;
+                        break;
+                    }
+                   case Bottom:{
+                        obj->shape.El.y += shift.y/2;
+                        obj->shape.El.rv += shift.y/2;
+                        break;
+                    }
+                }
+                obj->hitBox = (Rectangle) {
+                    obj->shape.El.x - abs(obj->shape.El.rh), obj->shape.El.y - abs(obj->shape.El.rv), 
+                    abs(obj->shape.El.rh) * 2, abs(obj->shape.El.rv) * 2
+                };
+               break;
+
+           case Line_sh:{
+               Vector2 *grabbed = GState->grabbed;
+               if(grabbed){
+                    grabbed->x += shift.x; 
+                    grabbed->y += shift.y; 
+                    Vector2 start = obj->shape.Line.start;
+                    Vector2 end = obj->shape.Line.end;
+                    obj->hitBox = (Rectangle) {
+                        fmin(start.x, end.x), 
+                        fmin(start.y, end.y),
+                        fmax(start.x, end.x) - fmin(start.x, end.x),
+                        fmax(start.y, end.y) - fmin(start.y, end.y),
+                    };
+               }
+               break;
+           }
+           case Arrow_sh:{
+               Vector2 *grabbed = GState->grabbed;
+               if(grabbed){
+                    grabbed->x += shift.x; 
+                    grabbed->y += shift.y; 
+                    Vector2 start = obj->shape.Arr.start;
+                    Vector2 end = obj->shape.Arr.end;
+
+                    Vector2 p = APointOnLine(start, end, 0.9);
+                    obj->shape.Arr.h1 = (Vector2) {p.x, p.y + margin};
+                    obj->shape.Arr.h2 = (Vector2) {p.x, p.y - margin};
+                    obj->hitBox = (Rectangle) {
+                        fmin(start.x, end.x), 
+                        fmin(start.y, end.y),
+                        fmax(start.x, end.x) - fmin(start.x, end.x),
+                        fmax(start.y, end.y) - fmin(start.y, end.y),
+                    };
+               }
+               break;
+          }
+       }
+       GState->Equip_pos = epos;
+    }
+}
+
 void Update(State *GState){
     TrackScrollWheel(GState);
     Vector2 epos = GetMousePosition();
     int KeyPressed = GetKeyPressed();
-
-    if(KeyPressed > 0){
+    if(KeyPressed >= KEY_ONE && KeyPressed <= KEY_NINE){
         ChangeShapeToIndex(KeyPressed - KEY_ONE, GState);
     }
 
-    // Hovering -> appears hitbox 
-    if(!(epos.x == GState->prevMouse.x && epos.y == GState->prevMouse.y) && (GState->mode == Free || GState->mode == Pointing) ){
+    // When mouse moves 
+    if(!(epos.x == GState->prevMouse.x && epos.y == GState->prevMouse.y)){
         GState->prevMouse = epos;
-        Object *hoveredObj = NULL;
+        Object *onBorderObj = NULL;
         for (int i = 0; i <= GState->n; ++i){
             Object *obj = &GState->Objects_buffer[i];
-            if(isPointOnObjectBorder(epos, *obj, 10)){
-                hoveredObj = obj;
+            if(isPointOnObjectBorder(epos, *obj, margin)){
+                onBorderObj = obj;
+            }
+        } 
+        GState->pointingTo = onBorderObj;
+        if(GState->mode == Free) GState->cursor = onBorderObj ? MOUSE_CURSOR_POINTING_HAND: MOUSE_CURSOR_DEFAULT;
+        if(GState->mode == Selected){
+            Object *obj = GState->selected;
+            if(obj->type == Ellipse_sh || obj->type == Rectangle_sh){
+                int side = isOnBordersWithMargin(epos, obj->hitBox, margin);
+                if (side == -1) GState->cursor = MOUSE_CURSOR_DEFAULT;
+                else {
+                    switch(side){
+                        case Top:
+                        case Bottom:
+                            GState->cursor = MOUSE_CURSOR_RESIZE_NS;
+                            break;
+
+                        case Left:
+                        case Right:
+                            GState->cursor = MOUSE_CURSOR_RESIZE_EW;
+                            break;
+                    }
+                }
             }
         }
-        if(hoveredObj){
-            GState->mode = Pointing;
-            GState->pointingTo = hoveredObj;
+    }
+
+    if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
+        // FREE & POINTING -> POINTING
+        if(GState->mode == Free && GState->pointingTo){
+            GState->mode = Selected;
+            GState->selected = GState->pointingTo;
         }
-        else {
-            GState->pointingTo = NULL;
-            GState->mode = Free;
+
+        // FREE & NOT-POINTING -> DRAW 
+        else if(GState->mode == Free && !GState->pointingTo){
+            GState->Equip_pos = epos; 
+            GState->mode = Drawing;
+            Object Obj = {
+                .type = GState->Shape_Equipped,
+                .thickness = 3,
+                .stroke = GRAY,
+                .showHitBox = true,
+            };
+            switch(GState->Shape_Equipped){
+                case Rectangle_sh:
+                    Obj.shape.Rect = (Rectangle) {0, 0, 0, 0};
+                    break;
+
+                case Ellipse_sh:
+                    Obj.shape.El = (Ellipse) {0, 0, 0, 0};
+                    break;
+
+                case Line_sh:
+                    Obj.shape.Line = (Line) {epos, (Vector2){0, 0}};
+                    break;
+
+                case Arrow_sh:
+                    Obj.shape.Arr = (Arrow) {
+                        epos, 
+                        (Vector2){0, 0},
+                        (Vector2){0, 0},
+                        (Vector2){0, 0},
+                    };
+                    break;
+            };
+            GState->beingDrawn = Obj;
+        }
+        // POINTING && CTRL -> DRAGGING 
+        else if(IsKeyDown(KEY_LEFT_CONTROL) && GState->pointingTo){
+            GState->Equip_pos = epos; 
+            GState->selected = GState->pointingTo; 
+            GState->mode = Dragging;
+        }
+
+        // CLICK WHILE SELECTED 
+        else if(GState->mode == Selected){
+            Object *obj = GState->selected;
+
+            // IF NOT INSIDE HITBOX -> FREE
+            if(!isInRectangle(epos, (Rectangle) {obj->hitBox.x-margin, obj->hitBox.y-margin, obj->hitBox.width+margin*2, obj->hitBox.height+margin*2})){
+                if(GState->pointingTo){
+                    GState->selected = GState->pointingTo; 
+                }
+                else {
+                    GState->mode = Free;
+                    GState->selected = NULL; 
+                }
+            }
+
+            // ON BORDERS -> RESHAPING;
+            // INSIDE BORDERS -> DRAGGING;
+            else{
+                Object *obj = GState->selected;
+                bool InsideOuter = isInRectangle(epos, (Rectangle) {
+                        obj->hitBox.x-margin, 
+                        obj->hitBox.y-margin, 
+                        obj->hitBox.width+margin*2, 
+                        obj->hitBox.height+margin*2
+                });
+                if(InsideOuter){
+                    int side = isOnBordersWithMargin(epos, obj->hitBox, margin);
+                    if(side == -1){
+                        GState->Equip_pos = epos; 
+                        GState->mode = Dragging;
+                    }
+                    else{
+                        if(obj->type == Rectangle_sh || obj->type == Ellipse_sh){
+                            switch(side){
+                                case Top:
+                                case Bottom:
+                                    GState->cursor = MOUSE_CURSOR_RESIZE_NS;
+                                    break;
+
+                                case Left:
+                                case Right:
+                                    GState->cursor = MOUSE_CURSOR_RESIZE_EW;
+                                    break;
+                            }
+                            GState->reshapeModeSide = side;
+                        }
+                        else if(obj->type == Line_sh || obj->type == Arrow_sh){
+                            float d_start = dist(epos, obj->shape.Line.start);
+                            float d_end = dist(epos, obj->shape.Line.end);
+                            if(d_start < margin || d_end < margin){
+                                if(d_start == fmin(d_start, d_end)){
+                                    GState->grabbed = &obj->shape.Line.start;
+                                }
+                                else {
+                                    GState->grabbed = &obj->shape.Line.end;
+                                }
+                            }
+                            else {
+                                GState->grabbed = NULL;
+                            }
+                        }
+                        GState->Equip_pos = epos; 
+                        GState->mode = Reshaping;
+                    }
+                }
+            }
+        }
+    }
+
+    if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT)){
+        if(GState->mode == Drawing){
+           Object Obj = GState->beingDrawn;
+           Obj.stroke = GRAY;
+           Obj.showHitBox = false;
+           GState->Objects_buffer[GState->n] = Obj;
+           GState->n++;
+           GState->mode= Free;
+        }
+        if(GState->mode == Reshaping){
+            switch(GState->selected->type){
+                case Rectangle_sh:
+                    Rectangle adjustedRect = AdjustRectangle(GState->selected->shape.Rect);
+                    GState->selected->shape.Rect = adjustedRect;
+                    GState->selected->hitBox = adjustedRect;
+                    break;
+                case Ellipse_sh:
+                    GState->selected->shape.El = AdjustEllipse(GState->selected->shape.El);
+                    break;
+            }
+            GState->mode = Selected;
+        }
+        if(GState->mode == Dragging){
+            GState->mode = Selected;
         }
     }
     HandleDrawing(GState);
     HandleDragging(GState);
+    HandleReshaping(GState);
 }
 
 void DrawObject(Object obj){
     switch(obj.type){
         case Rectangle_sh:  
+            obj.shape.Rect = AdjustRectangle(obj.shape.Rect);
             DrawRectangleLinesEx((Rectangle){ 
                     obj.shape.Rect.x,
                     obj.shape.Rect.y, 
@@ -479,12 +754,7 @@ void DrawObject(Object obj){
             break;
     }
     if(obj.showHitBox){
-        DrawRectangleLinesEx((Rectangle){ 
-            obj.hitBox.x,
-            obj.hitBox.y,
-            obj.hitBox.width,
-            obj.hitBox.height,
-        },  1, RED);
+        DrawHitbox(obj);
     }
 }
 
@@ -507,32 +777,30 @@ void Render(State *GState){
         DrawObject(obj);
     }
 
-    // hitbox on the object being pointed at;
-    if(GState->mode == Pointing){
-        Object obj = *GState->pointingTo;
-        DrawRectangleLinesEx((Rectangle){ 
-            obj.hitBox.x,
-            obj.hitBox.y,
-            obj.hitBox.width,
-            obj.hitBox.height,
-        },  1, RED);
+    // hitbox on the object being pointed at (not if selected);
+    // if(GState->pointingTo && GState->selected != GState->pointingTo){
+    //     DrawHitbox(*GState->pointingTo);
+    // }
+
+    // hitbox on the object selected;
+    if(GState->mode == Selected){
+        Object obj = *GState->selected;
+        obj.stroke = WHITE;
+        DrawHitbox(obj);
+        DrawObject(obj);
+        if(obj.type == Line_sh){
+            Line res = obj.shape.Line;
+            DrawCircle(res.start.x, res.start.y, 4, WHITE);
+            DrawCircle(res.end.x, res.end.y, 4, WHITE);
+        }
+        else if(obj.type == Arrow_sh){
+            Arrow res = obj.shape.Arr;
+            DrawCircle(res.start.x, res.start.y, 4, WHITE);
+            DrawCircle(res.end.x, res.end.y, 4, WHITE);
+        };
     }
 
-   if(GState->mode == Drawing) DrawObject(GState->beingDrawn);
+    if(GState->mode == Drawing) DrawObject(GState->beingDrawn);
 
-    // cursor maniup
-    switch(GState->mode){
-        case Drawing:
-            SetMouseCursor(MOUSE_CURSOR_DEFAULT);
-            break;
-
-        case Free:
-            SetMouseCursor(MOUSE_CURSOR_DEFAULT);
-            break;
-
-        case Dragging:
-        case Pointing:
-            SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
-            break;
-    }
+    SetMouseCursor(GState->cursor);
 }
