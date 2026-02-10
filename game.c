@@ -488,17 +488,71 @@ void HandleReshaping(State *GState){
        GState->Equip_pos = epos;
     }
 }
+void MoveObject(Object *obj, Vector2 vec){
+    float x = vec.x;
+    float y = vec.y;
+    switch(obj->type){
+        case Rectangle_sh:
+            obj->shape.Rect.x += x;
+            obj->shape.Rect.y += y;
+            break;
+        case Ellipse_sh:
+            obj->shape.El.x += x;
+            obj->shape.El.y += y;
+            break;
+        case Line_sh:
+            obj->shape.Line.start.x += x;
+            obj->shape.Line.start.y += y;
+            obj->shape.Line.end.x += x;
+            obj->shape.Line.end.y += y;
+            break;
+        case Arrow_sh:
+            obj->shape.Arr.start.x += x;
+            obj->shape.Arr.start.y += y;
 
+            obj->shape.Arr.end.x += x;
+            obj->shape.Arr.end.y += y;
+
+            obj->shape.Arr.h1.x += x;
+            obj->shape.Arr.h1.y += y;
+
+            obj->shape.Arr.h2.x += x;
+            obj->shape.Arr.h2.y += y;
+            break;
+    }
+}
+void HandleFOV(State* GState){
+    if(GState->mode == FOV_Move){
+        Vector2 epos = GetMousePosition();
+        Vector2 shift = (Vector2){epos.x - GState->Equip_pos.x, epos.y - GState->Equip_pos.y};
+
+        for(int i = 0; i <= GState->n; ++i){
+            Object *obj = &GState->Objects_buffer[i];
+            MoveObject(obj, shift);
+            obj->hitBox.x += shift.x;
+            obj->hitBox.y += shift.y;
+        }
+
+
+        GState->Equip_pos = epos;
+    }
+}
 void Update(State *GState){
     TrackScrollWheel(GState);
     Vector2 epos = GetMousePosition();
     int KeyPressed = GetKeyPressed();
+
     if(KeyPressed >= KEY_ONE && KeyPressed <= KEY_NINE){
         ChangeShapeToIndex(KeyPressed - KEY_ONE, GState);
     }
 
-    // When mouse moves 
-    if(!(epos.x == GState->prevMouse.x && epos.y == GState->prevMouse.y)){
+    // FOV Grabbed
+    if(IsKeyDown(KEY_SPACE)){
+        GState->cursor = MOUSE_CURSOR_RESIZE_ALL;
+    }
+
+    // Mouse Moves when FOV isn't grabbed
+    else if(!(epos.x == GState->prevMouse.x && epos.y == GState->prevMouse.y)){
         GState->prevMouse = epos;
         Object *onBorderObj = NULL;
         for (int i = 0; i <= GState->n; ++i){
@@ -556,10 +610,16 @@ void Update(State *GState){
             }
         }
     }
+    
 
     if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
+        // CTRL -> FOV Changes 
+        if(IsKeyDown(KEY_SPACE)){
+            GState->mode = FOV_Move;
+            GState->Equip_pos = epos; 
+        }
         // FREE & POINTING -> POINTING
-        if(GState->mode == Free && GState->pointingTo){
+        else if(GState->mode == Free && GState->pointingTo){
             GState->mode = Selected;
             GState->selected = GState->pointingTo;
         }
@@ -705,10 +765,14 @@ void Update(State *GState){
         if(GState->mode == Dragging){
             GState->mode = Selected;
         }
+        if(GState->mode == FOV_Move){
+            GState->mode = Free;
+        }
     }
     HandleDrawing(GState);
     HandleDragging(GState);
     HandleReshaping(GState);
+    HandleFOV(GState);
 }
 
 void DrawObject(Object obj){
@@ -788,11 +852,6 @@ void Render(State *GState){
     }
     ClearBackground(GState->bg);
 
-    // Tool Tray
-    DrawRectangle(GState->tray.x, GState->tray.y + GState->tray.selectedIndex * GState->tray.slot_w, GState->tray.slot_w, GState->tray.slot_w, WHITE);
-    for(int i = 0; i < N_SHAPES + 1; ++i){
-        DrawObject(GState->TrayObjectBuff[i]);
-    }
 
     // Main Board Objects
     for(int i = 0; i <= GState->n; ++i){
@@ -819,6 +878,13 @@ void Render(State *GState){
     }
 
     if(GState->mode == Drawing) DrawObject(GState->beingDrawn);
+
+    // Tool Tray
+    DrawRectangle(GState->tray.x, GState->tray.y, GState->tray.width, GState->tray.height, BLACK);
+    DrawRectangle(GState->tray.x, GState->tray.y + GState->tray.selectedIndex * GState->tray.slot_w, GState->tray.slot_w, GState->tray.slot_w, WHITE);
+    for(int i = 0; i < N_SHAPES + 1; ++i){
+        DrawObject(GState->TrayObjectBuff[i]);
+    }
 
     SetMouseCursor(GState->cursor);
 }

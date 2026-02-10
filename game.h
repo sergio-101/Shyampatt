@@ -24,6 +24,7 @@ typedef enum Mode {
     Selected,
     Reshaping,
     Dragging,
+    FOV_Move
 } Mode;
 
 typedef enum Edges {
@@ -88,6 +89,7 @@ typedef struct State {
     Object *selected;
     Object beingDrawn;
     Mode mode;
+    Vector2 FOV_O;
     Edges reshapeModeEdge; 
     Vector2 *grabbed;
     Shapes Shape_Equipped;
