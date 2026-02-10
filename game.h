@@ -26,9 +26,9 @@ typedef enum Mode {
     Dragging,
 } Mode;
 
-typedef enum Side {
-    Left, Top, Right, Bottom 
-} Side;
+typedef enum Edges {
+    Left, Top, Right, Bottom, Top_Left, Top_Right, Bottom_Right, Bottom_Left
+} Edges;
 
 typedef enum Shapes {
     Rectangle_sh = 0, // _sh (shape)
@@ -88,7 +88,7 @@ typedef struct State {
     Object *selected;
     Object beingDrawn;
     Mode mode;
-    Side reshapeModeSide; 
+    Edges reshapeModeEdge; 
     Vector2 *grabbed;
     Shapes Shape_Equipped;
     Vector2 prevMouse;

@@ -29,10 +29,8 @@ Rectangle AdjustRectangle(Rectangle rect){
 }
 
 Ellipse AdjustEllipse(Ellipse el){
-    // printf("%f, %f, %f, %f\n", el.x, el.y, el.rh, el.rv);
     el.rh = abs(el.rh);
     el.rv = abs(el.rv);
-    // printf("%f, %f, %f, %f\n", el.x, el.y, el.rh, el.rv);
     return el;
 }
 
@@ -63,7 +61,7 @@ State SetupBoard(int w, int h){
     };
     GState.Objects_buffer = malloc(sizeof(Object) *  INIT_NUMBER_OF_SHAPES_ALLOC);
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(w, h, "Backbuffer");
+    InitWindow(w, h, "Shyampatt");
     InitTray(&GState);
     SetTargetFPS(60);               
     return GState;
@@ -192,7 +190,7 @@ void TrackScrollWheel(State* GState){
     GState->tray.selectedIndex = remainder< 0 ? N_SHAPES + remainder: remainder;
     ChangeShapeToIndex(GState->tray.selectedIndex, GState);
 }
-bool isInRectangle(Vector2 p, Rectangle Rect){
+bool isInsideRectangle(Vector2 p, Rectangle Rect){
     return (
         Rect.y < p.y && 
         p.y < Rect.y + Rect.height && 
@@ -200,14 +198,14 @@ bool isInRectangle(Vector2 p, Rectangle Rect){
         p.x < Rect.x + Rect.width 
     );
 }
-int isOnBordersWithMargin(Vector2 p, Rectangle rect, int margin){
-    bool InsideOuter = isInRectangle(p, (Rectangle) {
+int isOnEdgeWithMargin(Vector2 p, Rectangle rect, int margin){
+    bool InsideOuter = isInsideRectangle(p, (Rectangle) {
             rect.x-margin, 
             rect.y-margin, 
             rect.width+margin*2, 
             rect.height+margin*2
     });
-    bool InsideInner = isInRectangle(p, (Rectangle) {
+    bool InsideInner = isInsideRectangle(p, (Rectangle) {
             rect.x+margin, 
             rect.y+margin, 
             rect.width-margin*2, 
@@ -219,19 +217,23 @@ int isOnBordersWithMargin(Vector2 p, Rectangle rect, int margin){
         float w = rect.width;
         float h = rect.height;
 
-        Side side;
-        if(isOffBy(p.x, x, margin)) side = Left;
-        else if(isOffBy(p.x, x + w, margin)) side = Right;
-        else if(isOffBy(p.y, y + h, margin)) side = Bottom;
-        else if(isOffBy(p.y, y, margin)) side = Top;
-        return side;
+        Edges edge;
+        if (dist(p, (Vector2) {x, y}) < 10) edge = Top_Left;
+        else if (dist(p, (Vector2) {x + w, y}) < 10) edge = Top_Right;
+        else if (dist(p, (Vector2) {x + w, y + h}) < 10) edge = Bottom_Right;
+        else if (dist(p, (Vector2) {x , y + h}) < 10) edge = Bottom_Left;
+        else if(isOffBy(p.x, x, margin)) edge = Left;
+        else if(isOffBy(p.x, x + w, margin)) edge = Right;
+        else if(isOffBy(p.y, y + h, margin)) edge = Bottom;
+        else if(isOffBy(p.y, y, margin)) edge = Top;
+        return edge;
     }
     else return -1;
 }
-bool isPointOnObjectBorder(Vector2 p, Object obj, int margin){
+bool isPointOnObject(Vector2 p, Object obj, int margin){
     switch(obj.type){
         case Rectangle_sh:
-            bool insideOuterMargin = isInRectangle(
+            bool insideOuterMargin = isInsideRectangle(
                 p,
                 (Rectangle) {
                     obj.shape.Rect.x - margin, 
@@ -240,7 +242,7 @@ bool isPointOnObjectBorder(Vector2 p, Object obj, int margin){
                     obj.shape.Rect.height + margin * 2
                 }
             ); 
-            bool insideInnerMargin = isInRectangle(
+            bool insideInnerMargin = isInsideRectangle(
                 p,
                 (Rectangle) {
                     obj.shape.Rect.x + margin, 
@@ -273,7 +275,7 @@ bool isPointOnObjectBorder(Vector2 p, Object obj, int margin){
             float c = y1 - m * x1;
             float c_dash = p.y - m * p.x;
             float err = abs(c - c_dash);
-            float inLineHitBox = isInRectangle(p, 
+            float inLineHitBox = isInsideRectangle(p, 
                 (Rectangle) {
                     obj.hitBox.x,
                     obj.hitBox.y,
@@ -407,54 +409,43 @@ void HandleReshaping(State *GState){
     if(GState->mode == Reshaping){
        Object *obj = GState->selected;
        Vector2 shift = (Vector2){epos.x - GState->Equip_pos.x, epos.y - GState->Equip_pos.y};
+       Edges edge = GState->reshapeModeEdge;
        switch(obj->type){
-           case Rectangle_sh:{
-               switch(GState->reshapeModeSide){
-                   case Right:
-                        obj->shape.Rect.width += shift.x;
-                       break;
-                   case Left:
-                       obj->shape.Rect.x += shift.x;
-                       obj->shape.Rect.width -= shift.x;
-                       break;
-                   case Top:
-                       obj->shape.Rect.y += shift.y;
-                       obj->shape.Rect.height -= shift.y;
-                       break;
-                   case Bottom:
-                       obj->shape.Rect.height += shift.y;
-                       break;
-                }
-                obj->hitBox = obj->shape.Rect;
-                break;
-            }
+           case Rectangle_sh:
+               if(edge == Right || edge == Top_Right || edge == Bottom_Right) obj->shape.Rect.width += shift.x;
+               if(edge == Bottom || edge == Bottom_Right || edge == Bottom_Left) obj->shape.Rect.height += shift.y;;
+               if(edge == Left || edge == Top_Left || edge == Bottom_Left) {
+                   obj->shape.Rect.x += shift.x;
+                   obj->shape.Rect.width -= shift.x;
+               }
+               if(edge == Top || edge == Top_Right || edge == Top_Left){
+                   obj->shape.Rect.y += shift.y;
+                   obj->shape.Rect.height -= shift.y;
+               }
+               obj->hitBox = obj->shape.Rect;
+               break;
+       
            case Ellipse_sh:
-                switch(GState->reshapeModeSide){
-                   case Right:{
-                        obj->shape.El.x += shift.x/2;
-                        obj->shape.El.rh += shift.x/2;
-                        break;
-                    }
-                   case Left:{
-                        obj->shape.El.x += shift.x/2;
-                        obj->shape.El.rh -= shift.x/2;
-                        break;
-                    }
-                   case Top:{
-                        obj->shape.El.y += shift.y/2;
-                        obj->shape.El.rv -= shift.y/2;
-                        break;
-                    }
-                   case Bottom:{
-                        obj->shape.El.y += shift.y/2;
-                        obj->shape.El.rv += shift.y/2;
-                        break;
-                    }
-                }
-                obj->hitBox = (Rectangle) {
-                    obj->shape.El.x - abs(obj->shape.El.rh), obj->shape.El.y - abs(obj->shape.El.rv), 
-                    abs(obj->shape.El.rh) * 2, abs(obj->shape.El.rv) * 2
-                };
+               if(edge == Right || edge == Top_Right || edge == Bottom_Right) {
+                   obj->shape.El.x += shift.x/2;
+                   obj->shape.El.rh += shift.x/2;
+               }
+               if(edge == Bottom || edge == Bottom_Right || edge == Bottom_Left) {
+                   obj->shape.El.y += shift.y/2;
+                   obj->shape.El.rv += shift.y/2;
+               }
+               if(edge == Left || edge == Top_Left || edge == Bottom_Left) {
+                   obj->shape.El.x += shift.x/2;
+                   obj->shape.El.rh -= shift.x/2;
+               }
+               if(edge == Top || edge == Top_Right || edge == Top_Left){
+                   obj->shape.El.y += shift.y/2;
+                   obj->shape.El.rv -= shift.y/2;
+               }
+               obj->hitBox = (Rectangle) {
+                   obj->shape.El.x - abs(obj->shape.El.rh), obj->shape.El.y - abs(obj->shape.El.rv), 
+                   abs(obj->shape.El.rh) * 2, abs(obj->shape.El.rv) * 2
+               };
                break;
 
            case Line_sh:{
@@ -512,7 +503,7 @@ void Update(State *GState){
         Object *onBorderObj = NULL;
         for (int i = 0; i <= GState->n; ++i){
             Object *obj = &GState->Objects_buffer[i];
-            if(isPointOnObjectBorder(epos, *obj, margin)){
+            if(isPointOnObject(epos, *obj, margin)){
                 onBorderObj = obj;
             }
         } 
@@ -520,11 +511,29 @@ void Update(State *GState){
         if(GState->mode == Free) GState->cursor = onBorderObj ? MOUSE_CURSOR_POINTING_HAND: MOUSE_CURSOR_DEFAULT;
         if(GState->mode == Selected){
             Object *obj = GState->selected;
-            if(obj->type == Ellipse_sh || obj->type == Rectangle_sh){
-                int side = isOnBordersWithMargin(epos, obj->hitBox, margin);
-                if (side == -1) GState->cursor = MOUSE_CURSOR_DEFAULT;
-                else {
-                    switch(side){
+            float x = obj->hitBox.x;
+            float y = obj->hitBox.y;
+            float w = obj->hitBox.width;
+            float h = obj->hitBox.height;
+            bool isInsideOuterBound = isInsideRectangle(epos, (Rectangle){x - margin, y - margin, w + margin * 2, h + margin * 2 });  
+            if(!isInsideOuterBound) GState->cursor = MOUSE_CURSOR_DEFAULT;
+            else {
+                if(obj->type == Ellipse_sh || obj->type == Rectangle_sh){
+                    int edge = isOnEdgeWithMargin(epos, obj->hitBox, margin);
+                    if(edge < 0) GState->cursor = MOUSE_CURSOR_RESIZE_ALL;
+                    switch(edge){
+                        // Vertices
+                        case Top_Right:
+                        case Bottom_Left:
+                            GState->cursor = MOUSE_CURSOR_RESIZE_NESW;
+                            break;
+
+                        case Top_Left:
+                        case Bottom_Right:
+                            GState->cursor = MOUSE_CURSOR_RESIZE_NWSE;
+                            break;
+
+                        // Actual Sides. Bad terminology, I know.
                         case Top:
                         case Bottom:
                             GState->cursor = MOUSE_CURSOR_RESIZE_NS;
@@ -534,6 +543,14 @@ void Update(State *GState){
                         case Right:
                             GState->cursor = MOUSE_CURSOR_RESIZE_EW;
                             break;
+                    }
+                }
+                else{
+                    float distFromEnd = dist(epos, obj->type == Line_sh? obj->shape.Line.end: obj->shape.Arr.end);
+                    float distFromStart = dist(epos, obj->type == Line_sh? obj->shape.Line.start: obj->shape.Arr.start);
+                    if(distFromEnd < margin || distFromStart < margin) GState->cursor = MOUSE_CURSOR_POINTING_HAND;
+                    else{
+                        GState->cursor = MOUSE_CURSOR_RESIZE_ALL;
                     }
                 }
             }
@@ -581,19 +598,19 @@ void Update(State *GState){
             };
             GState->beingDrawn = Obj;
         }
-        // POINTING && CTRL -> DRAGGING 
-        else if(IsKeyDown(KEY_LEFT_CONTROL) && GState->pointingTo){
-            GState->Equip_pos = epos; 
-            GState->selected = GState->pointingTo; 
-            GState->mode = Dragging;
-        }
 
         // CLICK WHILE SELECTED 
         else if(GState->mode == Selected){
             Object *obj = GState->selected;
+            bool InsideOuterBound = isInsideRectangle(epos, (Rectangle) {
+                    obj->hitBox.x-margin, 
+                    obj->hitBox.y-margin, 
+                    obj->hitBox.width+margin*2, 
+                    obj->hitBox.height+margin*2
+            });
 
             // IF NOT INSIDE HITBOX -> FREE
-            if(!isInRectangle(epos, (Rectangle) {obj->hitBox.x-margin, obj->hitBox.y-margin, obj->hitBox.width+margin*2, obj->hitBox.height+margin*2})){
+            if(!InsideOuterBound){
                 if(GState->pointingTo){
                     GState->selected = GState->pointingTo; 
                 }
@@ -603,55 +620,61 @@ void Update(State *GState){
                 }
             }
 
-            // ON BORDERS -> RESHAPING;
-            // INSIDE BORDERS -> DRAGGING;
+            // DRAGGING / RESHAPE;
             else{
                 Object *obj = GState->selected;
-                bool InsideOuter = isInRectangle(epos, (Rectangle) {
-                        obj->hitBox.x-margin, 
-                        obj->hitBox.y-margin, 
-                        obj->hitBox.width+margin*2, 
-                        obj->hitBox.height+margin*2
-                });
-                if(InsideOuter){
-                    int side = isOnBordersWithMargin(epos, obj->hitBox, margin);
-                    if(side == -1){
+                if(obj->type == Ellipse_sh || obj->type == Rectangle_sh){
+                    int edge = isOnEdgeWithMargin(epos, obj->hitBox, margin);
+                    if(edge < 0){
                         GState->Equip_pos = epos; 
                         GState->mode = Dragging;
                     }
                     else{
-                        if(obj->type == Rectangle_sh || obj->type == Ellipse_sh){
-                            switch(side){
-                                case Top:
-                                case Bottom:
-                                    GState->cursor = MOUSE_CURSOR_RESIZE_NS;
-                                    break;
+                        switch(edge){
+                            // Vertices
+                            case Top_Right:
+                            case Bottom_Left:
+                                GState->cursor = MOUSE_CURSOR_RESIZE_NESW;
+                                break;
 
-                                case Left:
-                                case Right:
-                                    GState->cursor = MOUSE_CURSOR_RESIZE_EW;
-                                    break;
-                            }
-                            GState->reshapeModeSide = side;
-                        }
-                        else if(obj->type == Line_sh || obj->type == Arrow_sh){
-                            float d_start = dist(epos, obj->shape.Line.start);
-                            float d_end = dist(epos, obj->shape.Line.end);
-                            if(d_start < margin || d_end < margin){
-                                if(d_start == fmin(d_start, d_end)){
-                                    GState->grabbed = &obj->shape.Line.start;
-                                }
-                                else {
-                                    GState->grabbed = &obj->shape.Line.end;
-                                }
-                            }
-                            else {
-                                GState->grabbed = NULL;
-                            }
+                            case Top_Left:
+                            case Bottom_Right:
+                                GState->cursor = MOUSE_CURSOR_RESIZE_NWSE;
+                                break;
+
+                            // Actual Sides. Bad terminology, I know.
+                            case Top:
+                            case Bottom:
+                                GState->cursor = MOUSE_CURSOR_RESIZE_NS;
+                                break;
+
+                            case Left:
+                            case Right:
+                                GState->cursor = MOUSE_CURSOR_RESIZE_EW;
+                                break;
                         }
                         GState->Equip_pos = epos; 
                         GState->mode = Reshaping;
+                        GState->reshapeModeEdge = edge;
                     }
+                }
+                else{
+                    float d_start = dist(epos, obj->type == Line_sh? obj->shape.Line.start: obj->shape.Arr.start);
+                    float d_end= dist(epos, obj->type == Line_sh? obj->shape.Line.end: obj->shape.Arr.end);
+                    if(d_end < margin || d_start < margin){
+                        if(d_start == fmin(d_start, d_end)){
+                            GState->grabbed = &obj->shape.Line.start;
+                        }
+                        else {
+                            GState->grabbed = &obj->shape.Line.end;
+                        }
+                        GState->mode = Reshaping;
+                    }
+                    else{
+                        GState->grabbed = NULL;
+                        GState->mode = Dragging;
+                    }
+                    GState->Equip_pos = epos; 
                 }
             }
         }
@@ -776,11 +799,6 @@ void Render(State *GState){
         Object obj = GState->Objects_buffer[i];
         DrawObject(obj);
     }
-
-    // hitbox on the object being pointed at (not if selected);
-    // if(GState->pointingTo && GState->selected != GState->pointingTo){
-    //     DrawHitbox(*GState->pointingTo);
-    // }
 
     // hitbox on the object selected;
     if(GState->mode == Selected){
