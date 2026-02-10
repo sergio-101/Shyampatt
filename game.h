@@ -12,9 +12,11 @@
 #define INIT_NUMBER_OF_SHAPES_ALLOC 20
 #define N_SHAPES 4
 
-static float TOOL_TRAY_WIDTH = 60; 
-static float MAX_TOOL_TRAY_HEIGHT = 400;
-static float TOOL_TRAY_MX = 50;
+static float TOOL_TRAY_MX = 0;
+static float TOOL_TRAY_GAP = 5;
+static float TOOL_TRAY_WIDTH = 40; 
+static float TOOL_TRAY_SLOT_SIDE = 40;
+static float TOOL_TRAY_PADDING = 20;
 static float margin = 10;
 
 typedef enum Mode {
@@ -71,7 +73,7 @@ typedef struct Object {
 typedef struct Tray_args {
     int selectedIndex;
     float padding;
-    float slot_w;
+    float slot_s;
     float gap;
     float height;
     float width;

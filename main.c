@@ -10,6 +10,14 @@ int main(void)
     while (!WindowShouldClose())    
     {
         BeginDrawing();
+        DrawTexturePro(
+            background,
+            (Rectangle){ 0, 0, background.width, background.height },  // source
+            (Rectangle){ 0, 0, GetScreenWidth(), GetScreenHeight() },   // dest
+            (Vector2){ 0, 0 },                                          // origin
+            0.0f,                                                        // rotation
+            WHITE
+        );
         Update(&GState);
         Render(&GState);
         EndDrawing();

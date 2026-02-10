@@ -57,11 +57,13 @@ State SetupBoard(int w, int h){
         .Shape_Equipped = Rectangle_sh,
         .cursor = MOUSE_CURSOR_DEFAULT,
         .bg = (Color) {0 , 0, 0, 255},
-        .prevMouse = (Vector2) {0, 0}
+        .prevMouse = (Vector2) {0, 0},
+        .FOV_O = (Vector2){0, 0}
     };
     GState.Objects_buffer = malloc(sizeof(Object) *  INIT_NUMBER_OF_SHAPES_ALLOC);
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(w, h, "Shyampatt");
+    background = LoadTexture("blackboard_bg.png");
     InitTray(&GState);
     SetTargetFPS(60);               
     return GState;
@@ -71,94 +73,80 @@ void InitTray(State *GState){
     float ScreenHeight = GetScreenHeight(); 
     GState->tray = (Tray_args) {
         .selectedIndex = 0,
-        .padding = margin * 2,
-        .slot_w = TOOL_TRAY_WIDTH,
-        .height = MAX_TOOL_TRAY_HEIGHT,
+        .padding = TOOL_TRAY_PADDING,
+        .slot_s = TOOL_TRAY_SLOT_SIDE,
         .width = TOOL_TRAY_WIDTH,
+        .height = TOOL_TRAY_SLOT_SIDE * N_SHAPES,
         .x = TOOL_TRAY_MX,
-        .y = ScreenHeight/2 - MAX_TOOL_TRAY_HEIGHT/2,
-        .gap = 5,
+        .y = ScreenHeight/2 - (TOOL_TRAY_SLOT_SIDE * N_SHAPES) /2,
     };
-
+    int crnt_n = 0;
+    float slot_s = GState->tray.slot_s; 
+    float padding = GState->tray.padding; 
     Object *TrayBuff = GState->TrayObjectBuff;
-    Object Tray = (Object) {
-        .type = Rectangle_sh,
-        .thickness = 3,
-        .stroke = GRAY,
-        .shape.Rect = (Rectangle) {
-            GState->tray.x, 
-            GState->tray.y, 
-            GState->tray.width, 
-            GState->tray.height, 
-        }
-    };
-    TrayBuff[0] = Tray;
-
     Vector2 slot = (Vector2) {
         GState->tray.x, 
         GState->tray.y
     };
-    float slot_w = GState->tray.slot_w; 
-    float padding = GState->tray.padding; 
-    float gap = GState->tray.gap;
 
     Object RectObj = (Object) {
         .type = Rectangle_sh,
-        .thickness = 3,
-        .stroke = GRAY,
+        .thickness = 1,
+        .stroke = WHITE,
         .shape.Rect = (Rectangle) {
             .x = slot.x + padding/2, 
             .y = slot.y + padding/2,
-            .width = slot_w - padding,
-            .height = slot_w - padding 
+            .width = slot_s - padding,
+            .height = slot_s - padding 
         }
     };
-    TrayBuff[1] = RectObj;
-    slot.y += slot_w + gap;
+    TrayBuff[crnt_n] = RectObj;
+    crnt_n++;
+    slot.y += slot_s;
 
     Object ElObj = (Object) {
         .type = Ellipse_sh,
-        .stroke = GRAY,
-        .thickness = 3,
+        .stroke = WHITE,
+        .thickness = 1,
         .shape.El = (Ellipse) {
-            .x = slot.x + slot_w/2, 
-            .y = slot.y + slot_w/2, 
-            .rh = slot_w/2 - padding/2,
-            .rv = slot_w/2 - padding/2,
+            .x = slot.x + slot_s/2, 
+            .y = slot.y + slot_s/2, 
+            .rh = slot_s/2 - padding/2,
+            .rv = slot_s/2 - padding/2,
         },
     };
-    TrayBuff[2] = ElObj;
-    slot.y += slot_w + gap;
+    TrayBuff[crnt_n] = ElObj;
+    crnt_n++;
+    slot.y += slot_s;
 
     Object LineObj = (Object) {
         .type = Line_sh,
-        .stroke = GRAY,
-        .thickness = 3,
+        .stroke = WHITE,
+        .thickness = 1,
         .shape.Line = (Line) {
-            .start = (Vector2) {slot.x + padding/2, slot.y + slot_w - padding},
-            .end = (Vector2) {slot.x + slot_w - padding/2, slot.y + padding/2}
+            .start = (Vector2) {slot.x + padding/2, slot.y + slot_s - padding/2},
+            .end = (Vector2) {slot.x + slot_s - padding/2, slot.y + padding/2}
         },
     };
-    TrayBuff[3] = LineObj;
-    slot.y += slot_w + gap;
+    TrayBuff[crnt_n] = LineObj;
+    crnt_n++;
+    slot.y += slot_s;
 
-    Vector2 start = (Vector2) {slot.x + padding/2, slot.y + slot_w/2 - padding/2};
-    Vector2 end = (Vector2) {slot.x + slot_w - padding/2, slot.y + slot_w/2 - padding/2};
+    Vector2 start = (Vector2) {slot.x + padding/2, slot.y + slot_s/2};
+    Vector2 end = (Vector2) {slot.x + slot_s - padding/2, slot.y + slot_s/2};
     Vector2 p = APointOnLine(start, end, 0.7);
     Object ArrowObj = (Object) {
         .type = Arrow_sh,
-        .stroke = GRAY,
-        .thickness = 3,
+        .stroke = WHITE,
+        .thickness = 1,
         .shape.Arr = (Arrow) {
             .start = start,
             .end = end,
-            .h1 = (Vector2) {p.x, p.y + margin},
-            .h2 = (Vector2) {p.x, p.y - margin},
+            .h1 = (Vector2) {p.x, p.y + 5},
+            .h2 = (Vector2) {p.x, p.y - 5},
         },
     };
-    TrayBuff[4] = ArrowObj;
-    slot.y += slot_w;
-
+    TrayBuff[crnt_n] = ArrowObj;
 }
 void ChangeShapeToIndex(int i, State* GState){
     switch(i){
@@ -525,15 +513,16 @@ void HandleFOV(State* GState){
     if(GState->mode == FOV_Move){
         Vector2 epos = GetMousePosition();
         Vector2 shift = (Vector2){epos.x - GState->Equip_pos.x, epos.y - GState->Equip_pos.y};
-
+        GState->FOV_O = (Vector2) {
+            .x = fmod(GState->FOV_O.x - shift.x, GetScreenWidth()),
+            .y = fmod(GState->FOV_O.y - shift.y, GetScreenWidth())
+        };
         for(int i = 0; i <= GState->n; ++i){
             Object *obj = &GState->Objects_buffer[i];
             MoveObject(obj, shift);
             obj->hitBox.x += shift.x;
             obj->hitBox.y += shift.y;
         }
-
-
         GState->Equip_pos = epos;
     }
 }
@@ -787,27 +776,15 @@ void DrawObject(Object obj){
             },  obj.thickness, obj.stroke);
             break;
         case Ellipse_sh:
-            DrawEllipseLines(
-                obj.shape.El.x,
-                obj.shape.El.y,
-                obj.shape.El.rh,
-                obj.shape.El.rv,
-                obj.stroke
-            );
-            DrawEllipseLines(
-                obj.shape.El.x,
-                obj.shape.El.y,
-                obj.shape.El.rh+1,
-                obj.shape.El.rv+1,
-                obj.stroke
-            );
-            DrawEllipseLines(
-                obj.shape.El.x,
-                obj.shape.El.y,
-                obj.shape.El.rh+2,
-                obj.shape.El.rv+2,
-                obj.stroke
-            );
+            for (int n = 0; n < obj.thickness; n++){
+                DrawEllipseLines(
+                    obj.shape.El.x,
+                    obj.shape.El.y,
+                    obj.shape.El.rh + n,
+                    obj.shape.El.rv + n,
+                    obj.stroke
+                );
+            }
             break;
 
         case Line_sh:
@@ -850,7 +827,15 @@ void Render(State *GState){
     if(IsWindowResized()){
         InitTray(GState);
     }
-    ClearBackground(GState->bg);
+    DrawTexturePro(
+        background,
+        (Rectangle){ GState->FOV_O.x, GState->FOV_O.y, background.width, background.height },  // source
+        (Rectangle){ 0, 0, GetScreenWidth(), GetScreenHeight() },   // dest
+        (Vector2){ 0, 0 },                                          // origin
+        0.0f,                                                        // rotation
+        WHITE
+    );
+    // ClearBackground(GState->bg);
 
 
     // Main Board Objects
@@ -880,8 +865,9 @@ void Render(State *GState){
     if(GState->mode == Drawing) DrawObject(GState->beingDrawn);
 
     // Tool Tray
-    DrawRectangle(GState->tray.x, GState->tray.y, GState->tray.width, GState->tray.height, BLACK);
-    DrawRectangle(GState->tray.x, GState->tray.y + GState->tray.selectedIndex * GState->tray.slot_w, GState->tray.slot_w, GState->tray.slot_w, WHITE);
+    DrawRectangle(GState->tray.x, GState->tray.y, GState->tray.width, GState->tray.height, (Color){14, 13, 12, 200});
+    // Selected SLot
+    DrawRectangle(GState->tray.x, GState->tray.y + GState->tray.selectedIndex * GState->tray.slot_s, GState->tray.slot_s, GState->tray.slot_s, (Color){46, 44, 38, 255});
     for(int i = 0; i < N_SHAPES + 1; ++i){
         DrawObject(GState->TrayObjectBuff[i]);
     }
