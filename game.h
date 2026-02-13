@@ -70,7 +70,7 @@ typedef struct Object {
     } shape;
 } Object;
 
-typedef struct Tray_args {
+typedef struct Tray {
     int selectedIndex;
     float padding;
     float slot_s;
@@ -79,26 +79,28 @@ typedef struct Tray_args {
     float width;
     float x;
     float y;
-} Tray_args;
+    Object TrayObjectBuff[N_SHAPES+1];
+} Tray;
 
 typedef struct State {
-    Object *Objects_buffer;
-    Object TrayObjectBuff[N_SHAPES+1];
     int n;
     int allocated;
     int cursor;
     Object *pointingTo;
     Object *selected;
     Object beingDrawn;
+    char *instruction;
+    bool show_instruction;
     Mode mode;
     Vector2 FOV_O;
     Edges reshapeModeEdge; 
     Vector2 *grabbed;
     Shapes Shape_Equipped;
     Vector2 prevMouse;
-    Color bg;
     Vector2 Equip_pos;
-    struct Tray_args tray;
+    Tray tray;
+    Texture2D background;
+    Object *Objects_buffer;
 } State;
 
 State SetupBoard(int w, int h);

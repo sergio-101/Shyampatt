@@ -1,5 +1,6 @@
 #include "shared.h"
 #include "game.h"
+#include <string.h>
 
 float dist(Vector2 p1, Vector2 p2) {
     float dx = p2.x - p1.x;
@@ -49,46 +50,51 @@ void freeAll(State* GState){
 }
 
 State SetupBoard(int w, int h){
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    SetTargetFPS(60);               
+    InitWindow(w, h, "Shyampatt");
     State GState = {
         .n = 0,
-        .TrayObjectBuff = {0},
         .allocated = INIT_NUMBER_OF_SHAPES_ALLOC,
         .mode = Free,
         .Shape_Equipped = Rectangle_sh,
         .cursor = MOUSE_CURSOR_DEFAULT,
-        .bg = (Color) {0 , 0, 0, 255},
+        .instruction = strdup("LOCK-IN => (CTRL)\nFOV => (SPACE)\nCHANGE-SHAPE => SCROLL || <1-4>\n"),
+        .show_instruction = true,
         .prevMouse = (Vector2) {0, 0},
-        .FOV_O = (Vector2){0, 0}
+        .FOV_O = (Vector2){0, 0},
+        .background = {0},
+        .Objects_buffer = {0},
+        .background = LoadTexture("blackboard_bg.png")
     };
     GState.Objects_buffer = malloc(sizeof(Object) *  INIT_NUMBER_OF_SHAPES_ALLOC);
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(w, h, "Shyampatt");
-    background = LoadTexture("blackboard_bg.png");
+    memset(GState.Objects_buffer, 0, sizeof(Object) *  INIT_NUMBER_OF_SHAPES_ALLOC);
     InitTray(&GState);
-    SetTargetFPS(60);               
     return GState;
 }
 
 void InitTray(State *GState){
     float ScreenHeight = GetScreenHeight(); 
-    GState->tray = (Tray_args) {
+    float slot_s = TOOL_TRAY_SLOT_SIDE; 
+    float padding = TOOL_TRAY_PADDING; 
+    GState->tray = (Tray) {
+        .TrayObjectBuff = {0},
         .selectedIndex = 0,
-        .padding = TOOL_TRAY_PADDING,
-        .slot_s = TOOL_TRAY_SLOT_SIDE,
+        .padding = padding,
+        .slot_s = slot_s,
         .width = TOOL_TRAY_WIDTH,
         .height = TOOL_TRAY_SLOT_SIDE * N_SHAPES,
         .x = TOOL_TRAY_MX,
         .y = ScreenHeight/2 - (TOOL_TRAY_SLOT_SIDE * N_SHAPES) /2,
     };
-    int crnt_n = 0;
-    float slot_s = GState->tray.slot_s; 
-    float padding = GState->tray.padding; 
-    Object *TrayBuff = GState->TrayObjectBuff;
+
+    Object *TrayBuff = GState->tray.TrayObjectBuff;
     Vector2 slot = (Vector2) {
         GState->tray.x, 
         GState->tray.y
     };
 
+    int crnt_n = 0;
     Object RectObj = (Object) {
         .type = Rectangle_sh,
         .thickness = 1,
@@ -100,8 +106,7 @@ void InitTray(State *GState){
             .height = slot_s - padding 
         }
     };
-    TrayBuff[crnt_n] = RectObj;
-    crnt_n++;
+    TrayBuff[crnt_n++] = RectObj;
     slot.y += slot_s;
 
     Object ElObj = (Object) {
@@ -115,8 +120,7 @@ void InitTray(State *GState){
             .rv = slot_s/2 - padding/2,
         },
     };
-    TrayBuff[crnt_n] = ElObj;
-    crnt_n++;
+    TrayBuff[crnt_n++] = ElObj;
     slot.y += slot_s;
 
     Object LineObj = (Object) {
@@ -128,8 +132,7 @@ void InitTray(State *GState){
             .end = (Vector2) {slot.x + slot_s - padding/2, slot.y + padding/2}
         },
     };
-    TrayBuff[crnt_n] = LineObj;
-    crnt_n++;
+    TrayBuff[crnt_n++] = LineObj;
     slot.y += slot_s;
 
     Vector2 start = (Vector2) {slot.x + padding/2, slot.y + slot_s/2};
@@ -146,7 +149,7 @@ void InitTray(State *GState){
             .h2 = (Vector2) {p.x, p.y - 5},
         },
     };
-    TrayBuff[crnt_n] = ArrowObj;
+    TrayBuff[crnt_n++] = ArrowObj;
 }
 void ChangeShapeToIndex(int i, State* GState){
     switch(i){
@@ -164,19 +167,21 @@ void ChangeShapeToIndex(int i, State* GState){
             break;
     }
     GState->tray.selectedIndex = i;
+    GState->mode = Free;
 }
 
 void TrackScrollWheel(State* GState){
     Vector2 scroll = GetMouseWheelMoveV();
     if(0.7 < scroll.y){
         GState->tray.selectedIndex--;
+        ChangeShapeToIndex(GState->tray.selectedIndex, GState);
     }
     else if(scroll.y < -0.7){
         GState->tray.selectedIndex++;
+        ChangeShapeToIndex(GState->tray.selectedIndex, GState);
     }
     int remainder = GState->tray.selectedIndex % N_SHAPES ;
     GState->tray.selectedIndex = remainder< 0 ? N_SHAPES + remainder: remainder;
-    ChangeShapeToIndex(GState->tray.selectedIndex, GState);
 }
 bool isInsideRectangle(Vector2 p, Rectangle Rect){
     return (
@@ -517,7 +522,7 @@ void HandleFOV(State* GState){
             .x = fmod(GState->FOV_O.x - shift.x, GetScreenWidth()),
             .y = fmod(GState->FOV_O.y - shift.y, GetScreenWidth())
         };
-        for(int i = 0; i <= GState->n; ++i){
+        for(int i = 0; i < GState->n; ++i){
             Object *obj = &GState->Objects_buffer[i];
             MoveObject(obj, shift);
             obj->hitBox.x += shift.x;
@@ -526,6 +531,14 @@ void HandleFOV(State* GState){
         GState->Equip_pos = epos;
     }
 }
+void remove_obj(Object *buff, Object* obj, int *n){
+    int diff = (obj - buff) * sizeof(Object);
+    int index_rm = diff / sizeof(Object);
+    for(int i = index_rm; i < *n - 1; ++i){
+        buff[i] = buff[i+1]; 
+    };
+    *n = *n - 1;
+}
 void Update(State *GState){
     TrackScrollWheel(GState);
     Vector2 epos = GetMousePosition();
@@ -533,6 +546,11 @@ void Update(State *GState){
 
     if(KeyPressed >= KEY_ONE && KeyPressed <= KEY_NINE){
         ChangeShapeToIndex(KeyPressed - KEY_ONE, GState);
+    }
+    if(KeyPressed == KEY_DELETE && GState->mode == Selected){
+        remove_obj(GState->Objects_buffer, GState->selected, &GState->n);
+        GState->selected = NULL;
+        GState->mode = Free;
     }
 
     // FOV Grabbed
@@ -544,14 +562,16 @@ void Update(State *GState){
     else if(!(epos.x == GState->prevMouse.x && epos.y == GState->prevMouse.y)){
         GState->prevMouse = epos;
         Object *onBorderObj = NULL;
-        for (int i = 0; i <= GState->n; ++i){
+        for (int i = 0; i < GState->n; ++i){
             Object *obj = &GState->Objects_buffer[i];
             if(isPointOnObject(epos, *obj, margin)){
                 onBorderObj = obj;
             }
         } 
-        GState->pointingTo = onBorderObj;
-        if(GState->mode == Free) GState->cursor = onBorderObj ? MOUSE_CURSOR_POINTING_HAND: MOUSE_CURSOR_DEFAULT;
+        if(!IsKeyDown(KEY_LEFT_CONTROL)){
+            GState->pointingTo = onBorderObj;
+            if(GState->mode == Free) GState->cursor = onBorderObj ? MOUSE_CURSOR_POINTING_HAND: MOUSE_CURSOR_DEFAULT;
+        }
         if(GState->mode == Selected){
             Object *obj = GState->selected;
             float x = obj->hitBox.x;
@@ -602,7 +622,7 @@ void Update(State *GState){
     
 
     if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
-        // CTRL -> FOV Changes 
+        // WHILE SPACE -> FOV Changes 
         if(IsKeyDown(KEY_SPACE)){
             GState->mode = FOV_Move;
             GState->Equip_pos = epos; 
@@ -615,6 +635,7 @@ void Update(State *GState){
 
         // FREE & NOT-POINTING -> DRAW 
         else if(GState->mode == Free && !GState->pointingTo){
+            GState->show_instruction = false;
             GState->Equip_pos = epos; 
             GState->mode = Drawing;
             Object Obj = {
@@ -735,8 +756,14 @@ void Update(State *GState){
            Obj.stroke = GRAY;
            Obj.showHitBox = false;
            GState->Objects_buffer[GState->n] = Obj;
+           if(!IsKeyDown(KEY_LEFT_CONTROL)){
+               GState->selected = &GState->Objects_buffer[GState->n];
+               GState->mode = Selected;
+           }
+           else {
+               GState->mode = Free;
+           }
            GState->n++;
-           GState->mode= Free;
         }
         if(GState->mode == Reshaping){
             switch(GState->selected->type){
@@ -828,18 +855,17 @@ void Render(State *GState){
         InitTray(GState);
     }
     DrawTexturePro(
-        background,
-        (Rectangle){ GState->FOV_O.x, GState->FOV_O.y, background.width, background.height },  // source
-        (Rectangle){ 0, 0, GetScreenWidth(), GetScreenHeight() },   // dest
-        (Vector2){ 0, 0 },                                          // origin
-        0.0f,                                                        // rotation
+        GState->background,
+        (Rectangle){ GState->FOV_O.x, GState->FOV_O.y, GState->background.width, GState->background.height },  
+        (Rectangle){ 0, 0, GetScreenWidth(), GetScreenHeight() },
+        (Vector2){ 0, 0 },
+        0.0f,
         WHITE
     );
-    // ClearBackground(GState->bg);
-
+    if(GState->show_instruction) DrawText(GState->instruction, GetScreenWidth()/2-200, GetScreenHeight()/2-20, 30, WHITE);   
 
     // Main Board Objects
-    for(int i = 0; i <= GState->n; ++i){
+    for(int i = 0; i < GState->n; ++i){
         Object obj = GState->Objects_buffer[i];
         DrawObject(obj);
     }
@@ -864,12 +890,13 @@ void Render(State *GState){
 
     if(GState->mode == Drawing) DrawObject(GState->beingDrawn);
 
-    // Tool Tray
+    // Tool Tray BG
     DrawRectangle(GState->tray.x, GState->tray.y, GState->tray.width, GState->tray.height, (Color){14, 13, 12, 200});
     // Selected SLot
     DrawRectangle(GState->tray.x, GState->tray.y + GState->tray.selectedIndex * GState->tray.slot_s, GState->tray.slot_s, GState->tray.slot_s, (Color){46, 44, 38, 255});
+    // Tool Tray Objects
     for(int i = 0; i < N_SHAPES + 1; ++i){
-        DrawObject(GState->TrayObjectBuff[i]);
+        DrawObject(GState->tray.TrayObjectBuff[i]);
     }
 
     SetMouseCursor(GState->cursor);
