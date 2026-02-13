@@ -6,7 +6,7 @@ static int SCREEN_HEIGHT = 450;
 
 int main(void)
 {
-    State GState = SetupBoard(SCREEN_WIDTH, SCREEN_HEIGHT);
+    State GState = Setup(SCREEN_WIDTH, SCREEN_HEIGHT);
     while (!WindowShouldClose())    
     {
         BeginDrawing();

@@ -1,6 +1,5 @@
 #include "shared.h"
 #include "game.h"
-#include <string.h>
 
 float dist(Vector2 p1, Vector2 p2) {
     float dx = p2.x - p1.x;
@@ -49,7 +48,7 @@ void freeAll(State* GState){
     free(GState->Objects_buffer);
 }
 
-State SetupBoard(int w, int h){
+State Setup(int w, int h){
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);               
     InitWindow(w, h, "Shyampatt");
@@ -59,7 +58,7 @@ State SetupBoard(int w, int h){
         .mode = Free,
         .Shape_Equipped = Rectangle_sh,
         .cursor = MOUSE_CURSOR_DEFAULT,
-        .instruction = strdup("LOCK-IN => (CTRL)\nFOV => (SPACE)\nCHANGE-SHAPE => SCROLL || <1-4>\n"),
+        .instruction = strdup("LOCK-SHAPE => (CTRL + DRAW)\nMOVE-FOV => (SPACE + DRAG)\nCHANGE-SHAPE => SCROLL || <1-4>\nDELETE-OBJECT => Delete"),
         .show_instruction = true,
         .prevMouse = (Vector2) {0, 0},
         .FOV_O = (Vector2){0, 0},
@@ -755,6 +754,10 @@ void Update(State *GState){
            Object Obj = GState->beingDrawn;
            Obj.stroke = GRAY;
            Obj.showHitBox = false;
+           if(GState->allocated - 1 <= GState->n){
+               GState->Objects_buffer = realloc(GState->Objects_buffer, sizeof(Object) *  GState->allocated * 2);
+               GState->allocated *= 2;
+           };
            GState->Objects_buffer[GState->n] = Obj;
            if(!IsKeyDown(KEY_LEFT_CONTROL)){
                GState->selected = &GState->Objects_buffer[GState->n];
@@ -862,7 +865,9 @@ void Render(State *GState){
         0.0f,
         WHITE
     );
-    if(GState->show_instruction) DrawText(GState->instruction, GetScreenWidth()/2-200, GetScreenHeight()/2-20, 30, WHITE);   
+
+    // ARBTRARY MAGIC NUMBERS? I KNOW. I JUST DONT CARE.
+    if(GState->show_instruction) DrawText(GState->instruction, GetScreenWidth()/2 - 300, GetScreenHeight()/2 - 50, 30, WHITE);   
 
     // Main Board Objects
     for(int i = 0; i < GState->n; ++i){
@@ -870,7 +875,7 @@ void Render(State *GState){
         DrawObject(obj);
     }
 
-    // hitbox on the object selected;
+    // Hitbox on the object selected;
     if(GState->mode == Selected){
         Object obj = *GState->selected;
         obj.stroke = WHITE;

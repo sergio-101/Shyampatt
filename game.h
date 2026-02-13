@@ -1,5 +1,6 @@
 #pragma once
 #include "shared.h"
+#include <string.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <assert.h>
@@ -9,7 +10,7 @@
 
 #define MID_SCREEN (Vector2){GetScreenWidth()/2,GetScreenHeight()/2}
 #define WINDOW_SIZE (Vector2){GetScreenWidth(),GetScreenHeight()}
-#define INIT_NUMBER_OF_SHAPES_ALLOC 20
+#define INIT_NUMBER_OF_SHAPES_ALLOC 10
 #define N_SHAPES 4
 
 static float TOOL_TRAY_MX = 0;
@@ -103,9 +104,31 @@ typedef struct State {
     Object *Objects_buffer;
 } State;
 
-State SetupBoard(int w, int h);
+State Setup(int w, int h);
+void InitTray(State* GState);
 void Update(State *GState);
 void Render(State *GState);
+void HandleDrawing(State *GState);
+void HandleDragging(State *GState);
+void HandleReshaping(State *GState);
+void HandleFOV(State* GState);
+
+void ChangeShapeToIndex(int i, State* GState);
+void DrawObject(Object obj);
+void DrawHitbox(Object obj);
+void MoveObject(Object *obj, Vector2 vec);
+void remove_obj(Object *buff, Object* obj, int *n);
+
+
+float dist(Vector2 p1, Vector2 p2);
+bool isOffBy(float p1, float p2, float m);
+Vector2 APointOnLine(Vector2 p1, Vector2 p2, float ratio);
+bool isInsideRectangle(Vector2 p, Rectangle Rect);
+int isOnEdgeWithMargin(Vector2 p, Rectangle rect, int margin);
+bool isPointOnObject(Vector2 p, Object obj, int margin);
+
+Rectangle AdjustRectangle(Rectangle rect);
+Ellipse AdjustEllipse(Ellipse el);
+
+void TrackScrollWheel(State* GState);
 void freeAll(State *GState);
-void CheckShapeChange(State* GState);
-void InitTray(State* GState);
